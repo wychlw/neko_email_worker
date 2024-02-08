@@ -2,7 +2,7 @@ import { EmailMessage } from "cloudflare:email";
 import { Env } from ".";
 import { database } from "./database";
 import { Buffer } from "node:buffer";
-import user from "./user";
+import { SHA256 } from "crypto-js";
 import { add_new_email_sender, remove_email_sender } from "./change_env";
 
 interface resp_t {
@@ -53,6 +53,15 @@ const resp_500: resp_t = {
     data: ""
 };
 
+function auth_password(pass_come: string, pass_save: string): boolean {
+    const come_sha256 = SHA256(pass_come).toString();
+    return (pass_come == pass_save) || (come_sha256 == pass_save);
+}
+
+function process_password(pass: string): string {
+    return SHA256(pass).toString();
+}
+
 export async function find_user(request: Request, env: Env, ctx: ExecutionContext, db: database): Promise<Response> {
     const path = new URL(request.url).pathname.split("/");
     const method = request.method;
@@ -62,7 +71,7 @@ export async function find_user(request: Request, env: Env, ctx: ExecutionContex
     }
 
     const username = path[3];
-    return user.find_user(username, db).then(() => {
+    return await db.query_user(username).then(() => {
         return new Response(JSON.stringify(resp_200), { status: 200 });
     }).catch((err) => {
         return new Response(JSON.stringify(resp_404), { status: 404 });
@@ -84,16 +93,21 @@ export async function auth_user(request: Request, env: Env, ctx: ExecutionContex
         return new Response(JSON.stringify(resp_401), { status: 401 });
     }
 
-    return user.auth_user(username, password, db).then((token) => {
-        const resp: resp_t = {
-            stat: 200,
-            token: token,
-            data: ""
-        };
-        return new Response(JSON.stringify(resp), { status: 200 });
-    }).catch((err) => {
+    const data = await db.query_user(username);
+    if (!data) {
+        return new Response(JSON.stringify(resp_404), { status: 404 });
+    }
+    if (data.username != username || !auth_password(password, data.password)) {
         return new Response(JSON.stringify(resp_401), { status: 401 });
-    });
+    }
+
+    const resp: resp_t = {
+        stat: 200,
+        token: data.token,
+        data: ""
+    };
+    return new Response(JSON.stringify(resp), { status: 200 });
+
 }
 
 export async function insert_user(request: Request, env: Env, ctx: ExecutionContext, db: database): Promise<Response> {
@@ -133,7 +147,8 @@ export async function insert_user(request: Request, env: Env, ctx: ExecutionCont
 
     // await add_new_email_sender(env, ctx, { name: new_username, type: "send_email" });
 
-    return db.insert_user(new_username, new_password, is_admin).then(() => {
+    const newpass_sha256 = process_password(new_password);
+    return db.insert_user(new_username, newpass_sha256, is_admin).then(() => {
         return new Response(JSON.stringify(resp_200), { status: 200 });
     }).catch((err) => {
         return new Response(JSON.stringify(resp_401), { status: 401 });
@@ -150,7 +165,7 @@ export async function update_user(request: Request, env: Env, ctx: ExecutionCont
 
     const username = path[3];
     const old_password = request.headers.get("Oldpass");
-    const new_password = request.headers.get("Newpass");
+    let new_password = request.headers.get("Newpass");
     const token = request.headers.get("Token");
     const is_admin = request.headers.get("Admin");
 
@@ -185,6 +200,10 @@ export async function update_user(request: Request, env: Env, ctx: ExecutionCont
 
     if (!admin_priv && !priv) {
         return new Response(JSON.stringify(resp_403), { status: 403 });
+    }
+
+    if (new_password) {
+        new_password = process_password(new_password);
     }
 
     if (new_password && is_admin) {

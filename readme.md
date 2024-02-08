@@ -60,6 +60,7 @@ create table if not exists mail_a_random_token (
 ```
 
 Change the password to someting simple, you will be able to edit from the client to generate a sha256 hashed version after fully setup.
+**But protect the token carefully! As it's expected to generate randomly and we use this to indicate a user.**
 
 Then deploy the worker with:
 ```bash
@@ -111,3 +112,6 @@ Then, set any of the email client application to connect to the local POP3 and S
 Sadly, due to email worker is still a new thing, cloudflare haven't added the API control to it. So if you want to add a new sender, you **MUST** edit from the binding list...
 
 Though the place is reserved, as long as the cloudflare added the API, we should use this function asap.
+
+# TODO
+- [] Frontend for the user system.
