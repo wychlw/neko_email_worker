@@ -1,0 +1,6 @@
+{
+    "server": "https://email-sender.test.workers.dev",
+    "host": "127.0.0.1",
+    "pop3_port": 11000,
+    "smtp_port": 25000
+}

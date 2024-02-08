@@ -1,0 +1,21 @@
+{
+  "dependencies": {
+    "@types/got": "^9.6.12",
+    "@types/mailparser": "^3.4.4",
+    "@types/smtp-server": "^3.5.10",
+    "@typescript-eslint/parser": "^6.20.0",
+    "got": "^14.1.0",
+    "mailparser": "^3.6.7",
+    "smtp-server": "^3.13.2"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "compile_watch": "tsc -p . -w",
+    "start": "node ./build/main.js"
+  },
+  "type": "module"
+}

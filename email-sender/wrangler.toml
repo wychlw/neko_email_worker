@@ -1,0 +1,18 @@
+name = "email-sender"
+main = "src/index.ts"
+compatibility_date = "2023-05-18"
+compatibility_flags = [ "nodejs_compat" ]
+
+send_email = [
+    {type = "send_email", name = "name@example.com"},
+    {type = "send_email", name = "test@example.com"}
+]
+
+[[d1_databases]]
+binding = "DB" # i.e. available in your Worker on env.DB
+database_name = "maildb_d1"
+database_id = "YOUR_DATABASE_ID"
+
+[vars]
+SCRIPT_NAME = "email-sender"
+
