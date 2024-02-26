@@ -1,5 +1,5 @@
 import got from "got";
-import { mail } from "./pop3";
+import { mail } from "./pop3.js";
 
 interface resp_t {
     stat: number;

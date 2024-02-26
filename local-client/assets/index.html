@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <!-- https://developer.mozilla.org/zh-CN/docs/Web/HTTP/CSP -->
+  <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'"> -->
+  <title>Neko Email Worker</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js",
+        "axios": "https://unpkg.com/axios/dist/axios.min.js",
+        "element-plus": "https://unpkg.com/element-plus"
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+  <!-- Import style -->
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+  <!-- Import Vue 3 -->
+  <script src="https://unpkg.com/vue@3"></script>
+  <!-- Import component library -->
+  <script src="https://unpkg.com/element-plus"></script>
+
+</head>
+
+<body>
+  <div id="page_app">
+
+
+    <div class="common-layout">
+      <el-container>
+        <el-container>
+          <el-aside width="200px">
+            <el-menu default-active="Overview" @select="handle_page_select">
+              <el-menu-item index="Overview">
+                <span>Overview</span>
+              </el-menu-item>
+              <el-menu-item index="UserSettings" disabled>
+                <span>User Settings</span>
+              </el-menu-item>
+              <el-menu-item index="Settings">
+                <span>Settings</span>
+              </el-menu-item>
+            </el-menu>
+          </el-aside>
+
+          <template v-if="page_now === 'Overview'">
+            <el-main>
+
+              <el-row>
+                <el-col :span="6">Remote server:</el-col>
+                <el-col>{{conf.server}}</el-col>
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="6">Local host:</el-col>
+                <el-col>{{conf.host}}</el-col>
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="6">POP3 port:</el-col>
+                <el-col>{{conf.pop3_port}}</el-col>
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="6">SMTP port:</el-col>
+                <el-col>{{conf.smtp_port}}</el-col>
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="6">Local status:</el-col>
+                <el-col>{{local_stat ? 'Running' : 'Stopped'}}</el-col>
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="6">Remote status:</el-col>
+                <el-col>{{remote_stat ? 'Connected' : 'Disconnected'}}</el-col>
+              </el-row>
+
+              <el-row></el-row>
+
+              <el-row class="mb-4">
+                <el-button type="primary" :disabled="is_loading_conf" @click="check_remote_server()">Recheck
+                  Remote</el-button>
+                <el-button type="primary" :disabled="is_loading_conf"
+                  @click="enable_disable_server(local_stat)">{{local_stat?"Stop \
+                  Local":"Start Local"}}</el-button>
+              </el-row>
+
+            </el-main>
+          </template>
+
+          <template v-if="page_now === 'Settings'">
+            <el-main>
+              <el-row>
+                <el-col :span="8">Remote server:</el-col>
+                <el-input v-model="conf.server" clearable />
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="8">Local host:</el-col>
+                <el-input v-model="conf.host" clearable />
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="8">POP3 port:</el-col>
+                <el-input-number v-model="conf.pop3_port" :min="0" :max="65535" size="small" controls-position="left" />
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="8">SMTP port:</el-col>
+                <el-input-number v-model="conf.smtp_port" :min="0" :max="65535" size="small" controls-position="left" />
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="8">Enable server on startup:</el-col>
+                <el-col>
+                  <el-switch v-model="conf.default_enable_server" />
+                </el-col>
+              </el-row>
+              <div class="line"></div>
+
+              <el-row>
+                <el-col :span="8">Show window on startup:</el-col>
+                <el-col>
+                  <el-switch v-model="conf.default_show_window" />
+                </el-col>
+              </el-row>
+
+              <el-row class="mb-4">
+                <el-button type="primary" :disabled="is_loading_conf" @click="reload_conf()">Reload Config</el-button>
+                <el-button type="primary" :disabled="is_loading_conf" @click="save_conf()">Save Config</el-button>
+              </el-row>
+
+            </el-main>
+          </template>
+
+        </el-container>
+      </el-container>
+    </div>
+  </div>
+</body>
+
+<script type="module">
+  const { createApp, ref } = Vue;
+  const { ElMessage } = ElementPlus;
+
+  async function chk_remote_server(addr) {
+    const url = addr + '/v1/users/conn_test';
+    try {
+      await axios.get(url);
+    }
+    catch (e) {
+      return false;
+    }
+    return true;
+  }
+
+  async function login_admin(username, password) { }
+
+  async function add_user(username, password, admin_token) { }
+
+  async function update_user(username, password, new_password, is_admin, admin_token) { }
+
+  async function main() {
+    let app = createApp({
+      setup() {
+        const conf = ref({
+          server: undefined,
+          host: undefined,
+          pop3_port: undefined,
+          smtp_port: undefined,
+          default_enable_server: undefined,
+          default_show_window: undefined
+        });
+
+        const remote_stat = ref(false);
+        const local_stat = ref(undefined);
+        const is_loading_conf = ref(false);
+        const is_saving_conf = ref(false);
+
+        const page_now = ref('Overview');
+
+        async function check_remote_server() {
+          is_loading_conf.value = true;
+          const stat = await chk_remote_server(conf.value.server);
+          remote_stat.value = stat;
+          is_loading_conf.value = false;
+          ElMessage({
+            showClose: true,
+            message: 'Check remote server status success!',
+            type: 'success',
+            duration: 1000
+          })
+        }
+
+        async function reload_conf(show_msg = true) {
+          is_loading_conf.value = true;
+          const data = await window.electronAPI.get_conf();
+          conf.value = data;
+          const stat = await chk_remote_server(conf.value.server);
+          remote_stat.value = stat;
+          is_loading_conf.value = false;
+          if (show_msg) {
+            ElMessage({
+              showClose: true,
+              message: 'Load config success!',
+              type: 'success',
+              duration: 1000
+            })
+          }
+        }
+
+        async function save_conf() {
+          is_saving_conf.value = true;
+          const data = JSON.parse(JSON.stringify(conf.value));
+          await window.electronAPI.set_conf(data);
+          await reload_conf(false);
+          is_saving_conf.value = false;
+          ElMessage({
+            showClose: true,
+            message: 'Save config success!',
+            type: 'success',
+            duration: 1000
+          })
+          ElMessage({
+            showClose: true,
+            message: 'Remember to restart the local server to apply the changes!',
+            type: 'warning',
+            duration: 2000
+          })
+        }
+
+        function handle_page_select(index, index_path, item, route_result) {
+          page_now.value = index;
+        }
+
+        async function enable_disable_server(stat) {
+          if (stat) {
+            await window.electronAPI.disable_server();
+          } else {
+            await window.electronAPI.enable_server();
+          }
+          local_stat.value = await window.electronAPI.get_local_status();
+        }
+
+        reload_conf(false).then(() => {
+          return window.electronAPI.get_local_status()
+        }).then((stat) => {
+          local_stat.value = stat;
+        });
+
+        return {
+          conf,
+          local_stat,
+          remote_stat,
+          is_loading_conf,
+          is_saving_conf,
+          page_now,
+          check_remote_server,
+          reload_conf,
+          save_conf,
+          handle_page_select,
+          enable_disable_server
+        }
+      }
+    }).use(ElementPlus).mount('#page_app');
+  }
+
+  main();
+</script>
+
+<style scoped>
+  .line {
+    width: 100%;
+    height: 0;
+    border-top: 1px solid var(--el-border-color);
+  }
+
+  .el-row {
+    margin-top: 10px;
+    margin-bottom: 10px;
+  }
+
+  .el-row:first-child {
+    margin-top: 0;
+  }
+
+  .el-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .el-col {
+    border-radius: 4px;
+  }
+</style>
+
+</html>

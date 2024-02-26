@@ -9,13 +9,18 @@
     "smtp-server": "^3.13.2"
   },
   "devDependencies": {
+    "electron": "^28.2.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },
+  "main": "build/main.js",
   "scripts": {
+    "clear": "rm -rf build",
     "compile": "tsc -p .",
     "compile_watch": "tsc -p . -w",
-    "start": "node ./build/main.js"
+    "start_node": "node .",
+    "start_electron": "electron .",
+    "start": "npm run compile && npm run start_electron"
   },
   "type": "module"
 }

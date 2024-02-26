@@ -1,111 +1,173 @@
-import pop3 from "./pop3.js";
-import smtp from "smtp-server";
-import parser from "./parser.js";
 import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import electron from "electron";
+import { enable_server, disable_server, is_server_enabled } from "./backend.js";
+const { app, BrowserWindow, Menu, Tray, ipcMain, dialog } = electron;
 
 
-import { find_user, auth_user, query_mail_meta, query_mail, delete_mail, send_mail } from "./handeler.js";
-
-interface conf_t {
+export interface conf_t {
     server: string;
     host: string;
     smtp_port: number;
     pop3_port: number;
+    default_enable_server: boolean;
+    default_show_window: boolean;
 };
 
-var conf: conf_t;
+async function load_conf(): Promise<conf_t> {
+    const conf_template: conf_t = {
+        server: "http://localhost:8080",
+        host: "localhost",
+        smtp_port: 25,
+        pop3_port: 110,
+        default_enable_server: true,
+        default_show_window: true,
+    };
+    // check if conf.json exists
+    try {
+        await fs.access("conf.json");
+    } catch (e) {
+        console.warn("conf.json not found");
+        // if not, create it
 
-fs.readFile("conf.json", "utf-8").then((file) => {
-    conf = JSON.parse(file);
+        const file = JSON.stringify(conf_template);
+        await fs.writeFile("conf.json", file, "utf-8");
+    }
 
-    const email_parser = new parser.email_parser();
+    const file = await fs.readFile("conf.json", "utf-8");
+    const data = JSON.parse(file);
 
-    const pop3_server = new pop3.pop3_server({
-        onFindUser: (username) => find_user(conf.server, username),
-        onAuth: (username, password) => auth_user(conf.server, username, password),
-        onStat: async (token) => {
-            const data = await query_mail_meta(conf.server, token);
-            return [data.num, data.size];
+    // check if the file is valid, check key by key
+    let conf: any = conf_template;
+    for (const [key, template_value] of Object.entries(conf_template)) {
+        if (key in data) {
+            conf[key] = data[key];
+        } else {
+            console.warn(`conf.json missing key ${key}, using default value ${template_value}`);
+        }
+    }
+    return conf as conf_t;
+}
+
+async function save_conf(conf: conf_t): Promise<void> {
+    const file = JSON.stringify(conf);
+    await fs.writeFile("conf.json", file, "utf-8");
+}
+
+var win: electron.BrowserWindow | null = null;
+async function create_window() {
+    if (win != null) {
+        win.focus();
+        return;
+    }
+
+    win = new BrowserWindow({
+        width: 1200,
+        height: 600,
+        webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: true,
+            preload: path.join(__dirname, 'preload.mjs'),
         },
-        onList: async (token) => {
-            const data = await query_mail_meta(conf.server, token);
-            return data.mails;
-        },
-        onRetr: (token, id) => query_mail(conf.server, token, id),
-        onQuit: async (token, dele) => {
-            for (const id of dele) {
-                try {
-                    await delete_mail(conf.server, token, id);
-                }
-                catch (e) {
-                    console.log(e);
-                }
-            }
+    });
+
+    win.loadFile(path.join(__dirname, '..', 'assets', 'index.html'));
+    win.webContents.openDevTools();
+
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+            create_window();
         }
     });
 
-    const smtp_server = new smtp.SMTPServer({
-        authOptional: true,
-        authMethods: ['PLAIN', 'LOGIN', 'XOAUTH2'],
-        disabledCommands: ['STARTTLS'],
-        onAuth: (auth, session, callback) => {
-            if (!auth.username || !auth.password) {
-                callback(new Error("Invalid credentials"));
-                return;
-            }
-            auth_user(conf.server, auth.username, auth.password).then((token) => {
-                callback(null, { user: token });
-            }).catch((e) => {
-                callback(e);
-            });
-        },
-        onData: (stream, session, callback) => {
-            stream.on("data", (chunk) => {
-                const parsed = email_parser.parse(chunk);
-                parsed.then((email) => {
-                    if (!email.from || !email.to) {
-                        callback(new Error("Invalid email"));
-                    }
-                    const from = email.from!.value[0].address!;
-                    let to: string[] = [];
-                    if (Array.isArray(email.to)) {
-                        for (const t of email.to) {
-                            to.push(t.value[0].address!);
-                        }
-                    }
-                    else {
-                        to.push(email.to!.value[0].address!);
-                    }
-                    const content_bs64 = Buffer.from(chunk).toString("base64");
-                    const data = {
-                        from: from,
-                        to: to,
-                        content: content_bs64
-                    };
-                    console.log(data);
-                    return send_mail(conf.server, session.user!, data);
-                }).then(() => {
-                    callback(null);
-                }).catch((e) => {
-                    callback(e);
-                });
-            });
-
+    app.on('window-all-closed', () => {
+        if (process.platform !== 'darwin') {
+            destroy_window();
         }
     });
-    smtp_server.on("error", (e) => {
-        console.log(e);
+}
+
+async function destroy_window() {
+    if (win != null) {
+        win.destroy();
+        win = null;
+    }
+}
+
+var app_tray: electron.Tray | null = null;
+async function enable_tray() {
+    if (app_tray != null) {
+        return;
+    }
+    const tray_menu: (electron.MenuItemConstructorOptions | electron.MenuItem)[] = [
+        {
+            label: "Show",
+            click: () => {
+                create_window();
+            }
+        }, {
+            label: "Exit",
+            click: () => {
+                app.quit();
+            }
+        }
+    ];
+    const icon_path = path.join(__dirname, '..', 'assets', 'email.png');
+    app_tray = new Tray(icon_path);
+    const context_menu = Menu.buildFromTemplate(tray_menu);
+    app_tray.setToolTip("Neko Email Worker");
+    app_tray.setContextMenu(context_menu);
+    app_tray.on("click", () => {
+        create_window();
     });
+}
 
-    console.log("Remote server at", conf.server);
+async function handel_get_conf(): Promise<conf_t> {
+    const conf = await load_conf();
+    return conf;
+}
 
-    pop3_server.listen(conf.pop3_port, conf.host);
+async function handel_set_conf(event: electron.IpcMainInvokeEvent, conf: conf_t): Promise<void> {
+    await save_conf(conf);
+}
 
-    smtp_server.listen(conf.smtp_port, conf.host, () => {
-        console.log("SMTP server listening on port", conf.smtp_port, " at ", conf.host);
-    });
+async function handel_enable_server(event: electron.IpcMainInvokeEvent): Promise<void> {
+    const conf = await load_conf();
+    await enable_server(conf.server, conf.host, conf.pop3_port, conf.smtp_port);
+}
 
-}).catch((e) => {
-    console.log(e);
+async function handel_disable_server(event: electron.IpcMainInvokeEvent): Promise<void> {
+    await disable_server();
+}
+
+async function handel_get_local_status(event: electron.IpcMainInvokeEvent): Promise<boolean> {
+    return is_server_enabled();
+}
+
+async function main() {
+    await app.whenReady();
+    let conf: conf_t = await load_conf();
+
+    enable_tray();
+
+    if (conf.default_enable_server) {
+        await enable_server(conf.server, conf.host, conf.pop3_port, conf.smtp_port);
+    }
+
+    ipcMain.handle("dialog:get_conf", handel_get_conf);
+    ipcMain.handle("dialog:set_conf", handel_set_conf);
+    ipcMain.handle("dialog:enable_server", handel_enable_server);
+    ipcMain.handle("dialog:disable_server", handel_disable_server);
+    ipcMain.handle("dialog:get_local_status", handel_get_local_status);
+    ipcMain.on('set-title', handel_set_conf);
+
+    if (conf.default_show_window) {
+        create_window();
+    }
+}
+
+main().catch((e) => {
+    console.error(e);
 });
-

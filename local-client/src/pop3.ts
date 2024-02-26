@@ -386,6 +386,8 @@ export class pop3_server {
         console.log("POP3 server listening on port", port, " at ", host);
         this.server.listen(port, host);
     }
-}
 
-export default { pop3_server };
+    close() {
+        this.server?.close();
+    }
+}
